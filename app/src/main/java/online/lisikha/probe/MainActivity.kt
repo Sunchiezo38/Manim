@@ -1,0 +1,15 @@
+package online.lisikha.probe
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+class MainActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super.onCreate(b);val p=NetworkProbeEngine(this);val s=SshCommander();setContent{App(p,s)}}}
+@OptIn(ExperimentalMaterial3Api::class) @Composable fun App(p:NetworkProbeEngine,s:SshCommander){var vh by remember{mutableStateOf("de-staging.lisikha-vpn.online")};var sh by remember{mutableStateOf("13.143.64.36")};var u by remember{mutableStateOf("root")};var pw by remember{mutableStateOf("")};var t by remember{mutableStateOf(TargetTransport.ACTIVE)};var r by remember{mutableStateOf<ProbeReport?>(null)};var q by remember{mutableStateOf("статус xray")};var out by remember{mutableStateOf("Ready")};var busy by remember{mutableStateOf(false)};val sc=rememberCoroutineScope();MaterialTheme{Scaffold(topBar={TopAppBar(title={Text("Lisikha Probe + AI Console")})}){pad->LazyColumn(Modifier.padding(pad).padding(12.dp).fillMaxSize(),verticalArrangement=Arrangement.spacedBy(10.dp)){item{Text("Network tests",style=MaterialTheme.typography.titleLarge)};item{OutlinedTextField(vh,{vh=it.trim()},Modifier.fillMaxWidth(),label={Text("VPN host")})};item{Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){TargetTransport.entries.forEach{x->FilterChip(selected=t==x,onClick={t=x},label={Text(x.name)})}}};item{Button(enabled=!busy,onClick={busy=true;sc.launch{r=p.run(vh,t);busy=false}}){Text("RUN FULL NETWORK TEST")}};r?.let{x->item{Text("${x.networkLabel} / ${x.transport}")};items(x.results){z->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(10.dp)){Text((if(z.ok)"PASS" else "FAIL")+" — "+z.name);z.latencyMs?.let{Text("$it ms")};Text(z.detail)}}}};item{HorizontalDivider();Text("Server direct control",style=MaterialTheme.typography.titleLarge)};item{OutlinedTextField(sh,{sh=it.trim()},Modifier.fillMaxWidth(),label={Text("SSH server")})};item{OutlinedTextField(u,{u=it.trim()},Modifier.fillMaxWidth(),label={Text("SSH user")})};item{OutlinedTextField(pw,{pw=it},Modifier.fillMaxWidth(),label={Text("SSH password (not saved)")},visualTransformation=PasswordVisualTransformation())};item{OutlinedTextField(q,{q=it},Modifier.fillMaxWidth(),label={Text("AI command")})};item{Button(enabled=!busy&&pw.isNotBlank(),onClick={val plan=SafeAiPlanner.plan(q);if(plan==null)out="Try: статус xray / логи xray / перезапусти xray / память / диск / сеть" else{busy=true;sc.launch{out=runCatching{val net=p.resolveNetwork(t);"AI plan: ${plan.label}\n\n"+s.exec(net,sh,22,u,pw,plan.command)}.getOrElse{"ERROR: ${it.message}"};busy=false}}}){Text("SEND AI COMMAND TO SERVER")}};item{Card(Modifier.fillMaxWidth()){Text(out,Modifier.padding(12.dp))}}}}}}

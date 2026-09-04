@@ -1,3 +1,3 @@
-# Lisikha Probe APK build workspace
+# Lisikha Probe Android
 
-Temporary build workspace for the Lisikha Android network/server probe.
+Android Wi-Fi/cellular diagnostics plus direct SSH server control. The in-app assistant maps natural language to a strict allow-list of server diagnostics/actions. Runtime password is not persisted.
