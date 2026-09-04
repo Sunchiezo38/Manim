@@ -10,6 +10,7 @@ import java.net.InetSocketAddress
 import java.net.URL
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlin.coroutines.resume
 
@@ -46,7 +47,6 @@ class NetworkProbeEngine(private val context:Context){
         o+=timed("DNS"){n.getAllByName(host).joinToString{it.hostAddress?:"?"}}
         o+=timed("TCP 8443"){tcp(n,host,8443)}
         o+=timed("TLS 8443"){tls(n,host,8443)}
-        // 443 is not the configured Lisikha endpoint. Keep it only as an optional diagnostic.
         o+=timed("TCP 443 (optional)",required=false){tcp(n,host,443)}
         o+=timed("HTTPS baseline"){https(n,"https://www.google.com/generate_204")}
         o+=timed("Public IP"){https(n,"https://api.ipify.org")}
@@ -55,9 +55,7 @@ class NetworkProbeEngine(private val context:Context){
 
     suspend fun runMatrix(host:String):List<ProbeReport>{
         val reports=mutableListOf<ProbeReport>()
-        for(t in listOf(TargetTransport.ACTIVE,TargetTransport.WIFI,TargetTransport.CELLULAR)){
-            reports+=run(host,t)
-        }
+        for(t in listOf(TargetTransport.ACTIVE,TargetTransport.WIFI,TargetTransport.CELLULAR)) reports+=run(host,t)
         return reports
     }
 
@@ -68,28 +66,17 @@ class NetworkProbeEngine(private val context:Context){
     }
 
     private suspend fun requestNetwork(tr:Int):Network?=suspendCancellableCoroutine{cont->
-        val req=NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addTransportType(tr).build()
+        val req=NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addTransportType(tr).build()
         val cb=object:ConnectivityManager.NetworkCallback(){
-            override fun onAvailable(n:Network){
-                runCatching{cm.unregisterNetworkCallback(this)}
-                if(cont.isActive)cont.resume(n)
-            }
-            override fun onUnavailable(){
-                runCatching{cm.unregisterNetworkCallback(this)}
-                if(cont.isActive)cont.resume(null)
-            }
+            override fun onAvailable(n:Network){runCatching{cm.unregisterNetworkCallback(this)};if(cont.isActive)cont.resume(n)}
+            override fun onUnavailable(){runCatching{cm.unregisterNetworkCallback(this)};if(cont.isActive)cont.resume(null)}
         }
         cm.requestNetwork(req,cb,12000)
         cont.invokeOnCancellation{runCatching{cm.unregisterNetworkCallback(cb)}}
     }
 
     private fun tcp(n:Network,h:String,p:Int):String{
-        n.socketFactory.createSocket().use{s->
-            s.connect(InetSocketAddress(h,p),5000)
-            return "Connected ${s.inetAddress.hostAddress}:$p"
-        }
+        n.socketFactory.createSocket().use{s->s.connect(InetSocketAddress(h,p),5000);return "Connected ${s.inetAddress.hostAddress}:$p"}
     }
 
     private fun tls(n:Network,h:String,p:Int):String{
@@ -97,7 +84,7 @@ class NetworkProbeEngine(private val context:Context){
         raw.connect(InetSocketAddress(h,p),5000)
         raw.soTimeout=5000
         raw.use{
-            val ssl=(SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw,h,p,false)
+            val ssl=(SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw,h,p,false) as SSLSocket
             ssl.use{s->
                 s.startHandshake()
                 val ses=s.session
@@ -109,9 +96,7 @@ class NetworkProbeEngine(private val context:Context){
 
     private fun https(n:Network,u:String):String{
         val c=n.openConnection(URL(u)) as HttpsURLConnection
-        c.connectTimeout=6000
-        c.readTimeout=6000
-        c.requestMethod="GET"
+        c.connectTimeout=6000;c.readTimeout=6000;c.requestMethod="GET"
         return try{
             val code=c.responseCode
             val body=runCatching{c.inputStream.bufferedReader().use{it.readText()}}.getOrDefault("")
